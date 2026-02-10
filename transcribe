@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Launcher for transcribe.py on Linux/macOS. Add this directory to PATH.
+set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$SCRIPT_DIR/venv"
+PYTHON="$VENV_DIR/bin/python"
+STAMP_FILE="$VENV_DIR/.deps_installed"
+
+if ! command -v ffmpeg &>/dev/null; then
+    echo "ffmpeg not found on PATH. Install it and retry."
+    exit 1
+fi
+
+if [[ ! -x "$PYTHON" ]]; then
+    echo "Venv not found. Run ./setup.sh first."
+    exit 1
+fi
+
+if [[ ! -f "$STAMP_FILE" ]]; then
+    echo "Installing dependencies..."
+    "$PYTHON" -m pip install -q -r "$SCRIPT_DIR/requirements.txt"
+    echo "installed" > "$STAMP_FILE"
+fi
+
+exec "$PYTHON" "$SCRIPT_DIR/transcribe.py" "$@"
