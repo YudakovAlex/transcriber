@@ -3,6 +3,9 @@ venv/
 .venv/
 env/
 
+# Setup-downloaded ffmpeg (optional local install)
+ffmpeg/
+
 # Python
 __pycache__/
 *.py[cod]
