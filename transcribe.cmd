@@ -2,7 +2,7 @@
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
-set "VENV_DIR=%SCRIPT_DIR%.venv"
+set "VENV_DIR=%SCRIPT_DIR%venv"
 set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
 set "STAMP_FILE=%VENV_DIR%\.deps_installed"
 

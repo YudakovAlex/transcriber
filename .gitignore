@@ -2,6 +2,8 @@
 venv/
 .venv/
 env/
+.env
+.env.*
 
 # Setup-downloaded ffmpeg (optional local install)
 ffmpeg/
@@ -12,10 +14,24 @@ __pycache__/
 *$py.class
 *.so
 .Python
+*.egg
 *.egg-info/
 .eggs/
 dist/
 build/
+*.manifest
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
 
 # IDE / editor
 .idea/
@@ -27,6 +43,7 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Transcripts (optional: uncomment if you don't want to track generated .txt)
+# Transcripts (optional: uncomment to ignore generated .txt next to audio)
 # *.txt
