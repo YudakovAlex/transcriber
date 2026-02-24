@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import torch
 import whisper
 from tqdm import tqdm
 
@@ -180,7 +181,16 @@ def main() -> int:
     if not audio_paths:
         raise SystemExit("No audio files found in the provided inputs.")
 
-    model = whisper.load_model(args.model)
+    use_cuda = torch.cuda.is_available()
+    device = "cuda" if use_cuda else "cpu"
+    fp16_enabled = use_cuda
+    model = whisper.load_model(args.model, device=device)
+
+    if use_cuda:
+        gpu_name = torch.cuda.get_device_name(0)
+        print(f"Using device: {device} ({gpu_name}), fp16={fp16_enabled}")
+    else:
+        print(f"Using device: {device}, fp16={fp16_enabled}")
 
     for audio_path in audio_paths:
         if not audio_path.is_file():
@@ -210,7 +220,7 @@ def main() -> int:
                         model.transcribe(
                             chunk,
                             language=args.language,
-                            fp16=False,
+                            fp16=fp16_enabled,
                         )
                     )
             else:
@@ -219,7 +229,7 @@ def main() -> int:
                         model.transcribe(
                             chunks[0],
                             language=args.language,
-                            fp16=False,
+                            fp16=fp16_enabled,
                         )
                     )
             text = merge_chunk_results(chunk_results, overlap_sec)
@@ -228,7 +238,7 @@ def main() -> int:
                 result = model.transcribe(
                     str(audio_path),
                     language=args.language,
-                    fp16=False,
+                    fp16=fp16_enabled,
                 )
             text = (result.get("text") or "").strip()
 
