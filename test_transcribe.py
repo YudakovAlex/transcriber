@@ -6,15 +6,38 @@ Run from project root (with venv activated or use venv's python):
   python -m pytest test_transcribe.py -v
 """
 import sys
-import tempfile
+import shutil
 import unittest
+import uuid
+import runpy
+from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
 # Import module under test (after setting mocks if needed)
 import transcribe as M
+
+TEST_TMP_ROOT = Path(__file__).resolve().parent / ".tmp_test"
+
+
+@contextmanager
+def _make_temp_dir():
+    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    path = TEST_TMP_ROOT / f"tmp_{uuid.uuid4().hex}"
+    path.mkdir(parents=True, exist_ok=False)
+    try:
+        yield str(path)
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def _make_temp_file(suffix: str) -> Path:
+    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    path = TEST_TMP_ROOT / f"tmp_{uuid.uuid4().hex}{suffix}"
+    path.write_bytes(b"")
+    return path
 
 
 class TestEnsureFfmpegAvailable(unittest.TestCase):
@@ -83,17 +106,16 @@ class TestSpinner(unittest.TestCase):
 
 class TestCollectAudioPaths(unittest.TestCase):
     def test_single_file(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            path = f.name
+        path = _make_temp_file(".mp3")
         try:
-            result = M.collect_audio_paths([path])
+            result = M.collect_audio_paths([str(path)])
             self.assertEqual(len(result), 1)
-            self.assertEqual(Path(result[0]).name, Path(path).name)
+            self.assertEqual(Path(result[0]).name, path.name)
         finally:
-            Path(path).unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
 
     def test_directory_glob(self) -> None:
-        with tempfile.TemporaryDirectory() as d:
+        with _make_temp_dir() as d:
             root = Path(d)
             (root / "a.mp3").write_bytes(b"x")
             (root / "b.wav").write_bytes(b"y")
@@ -104,19 +126,18 @@ class TestCollectAudioPaths(unittest.TestCase):
             self.assertEqual(names, {"a.mp3", "b.wav", "c.ogg"})
 
     def test_mixed_files_and_dir(self) -> None:
-        with tempfile.TemporaryDirectory() as d:
+        with _make_temp_dir() as d:
             root = Path(d)
             (root / "in_dir.mp3").write_bytes(b"x")
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-                single = f.name
+            single = _make_temp_file(".mp3")
             try:
-                result = M.collect_audio_paths([single, d])
+                result = M.collect_audio_paths([str(single), d])
                 self.assertGreaterEqual(len(result), 2)
                 stems = {Path(p).stem for p in result}
-                self.assertIn(Path(single).stem, stems)
+                self.assertIn(single.stem, stems)
                 self.assertIn("in_dir", stems)
             finally:
-                Path(single).unlink(missing_ok=True)
+                single.unlink(missing_ok=True)
 
 
 class TestChunkAudio(unittest.TestCase):
@@ -147,13 +168,13 @@ class TestChunkAudio(unittest.TestCase):
         chunks = M.chunk_audio(audio, chunk_duration_sec=chunk_sec, overlap_sec=overlap_sec)
         self.assertGreater(len(chunks), 1)
         chunk_len = int(chunk_sec * M.SAMPLE_RATE)
-        step_len = int((chunk_sec - overlap_sec) * M.SAMPLE_RATE)
         for i, c in enumerate(chunks):
             self.assertLessEqual(len(c), chunk_len)
         # First chunk full length
         self.assertEqual(len(chunks[0]), chunk_len)
-        # Overlap: second chunk's first step_len samples match first chunk's last step_len
-        np.testing.assert_array_equal(chunks[1][:step_len], chunks[0][-step_len:])
+        # Overlap: second chunk's first overlap_len samples match first chunk's last overlap_len
+        overlap_len = int(overlap_sec * M.SAMPLE_RATE)
+        np.testing.assert_array_equal(chunks[1][:overlap_len], chunks[0][-overlap_len:])
 
 
 class TestMergeChunkResults(unittest.TestCase):
@@ -217,31 +238,29 @@ class TestMain(unittest.TestCase):
                         M.main()
 
     def test_skips_missing_file(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            real_path = f.name
-        Path(real_path).unlink(missing_ok=True)
-        with patch.object(sys, "argv", ["transcribe", real_path]):
+        real_path = _make_temp_file(".mp3")
+        real_path.unlink(missing_ok=True)
+        with patch.object(sys, "argv", ["transcribe", str(real_path)]):
             with patch.object(M, "ensure_ffmpeg_available"):
-                with patch.object(M, "collect_audio_paths", return_value=[Path(real_path)]):
+                with patch.object(M, "collect_audio_paths", return_value=[real_path]):
                     with patch("transcribe.whisper.load_model"):
                         out = M.main()
         self.assertEqual(out, 0)
 
     def test_skips_unsupported_extension(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as f:
-            path = f.name
+        path = _make_temp_file(".flac")
         try:
-            with patch.object(sys, "argv", ["transcribe", path]):
+            with patch.object(sys, "argv", ["transcribe", str(path)]):
                 with patch.object(M, "ensure_ffmpeg_available"):
-                    with patch.object(M, "collect_audio_paths", return_value=[Path(path)]):
+                    with patch.object(M, "collect_audio_paths", return_value=[path]):
                         with patch("transcribe.whisper.load_model"):
                             out = M.main()
             self.assertEqual(out, 0)
         finally:
-            Path(path).unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
 
     def test_transcribes_single_file_no_chunking(self) -> None:
-        with tempfile.TemporaryDirectory() as d:
+        with _make_temp_dir() as d:
             root = Path(d)
             audio_file = root / "rec.mp3"
             audio_file.write_bytes(b"fake")
@@ -252,14 +271,16 @@ class TestMain(unittest.TestCase):
                 with patch.object(M, "ensure_ffmpeg_available"):
                     with patch.object(M, "collect_audio_paths", return_value=[audio_file]):
                         with patch("transcribe.whisper.load_model", return_value=mock_model):
-                            out = M.main()
+                            with patch("transcribe.torch.cuda.is_available", return_value=False):
+                                out = M.main()
             self.assertEqual(out, 0)
             mock_model.transcribe.assert_called_once()
             self.assertTrue(out_file.exists())
             self.assertIn("Hello world", out_file.read_text(encoding="utf-8"))
+            self.assertFalse(mock_model.transcribe.call_args.kwargs["fp16"])
 
     def test_transcribes_with_chunking(self) -> None:
-        with tempfile.TemporaryDirectory() as d:
+        with _make_temp_dir() as d:
             root = Path(d)
             audio_file = root / "long.mp3"
             audio_file.write_bytes(b"fake")
@@ -269,21 +290,55 @@ class TestMain(unittest.TestCase):
                 {"text": "Part one.", "segments": [{"start": 0, "end": 2, "text": "Part one."}]},
                 {"text": "Part two.", "segments": [{"start": 31, "end": 35, "text": "Part two."}]},
             ]
-            # Audio long enough to create 2 chunks: 10 sec at 16kHz
-            fake_audio = np.zeros(int(10 * M.SAMPLE_RATE), dtype=np.float32)
+            # Audio long enough to create exactly 2 chunks: 8 sec at 16kHz with 5s chunks and 1s overlap.
+            fake_audio = np.zeros(int(8 * M.SAMPLE_RATE), dtype=np.float32)
             with patch.object(sys, "argv", ["transcribe", str(audio_file), "--chunk-duration", "5", "--overlap", "1"]):
                 with patch.object(M, "ensure_ffmpeg_available"):
                     with patch.object(M, "collect_audio_paths", return_value=[audio_file]):
                         with patch("transcribe.whisper.load_model", return_value=mock_model):
                             with patch("transcribe.whisper.load_audio", return_value=fake_audio):
                                 with patch("transcribe.tqdm", side_effect=lambda it, **kw: it):
-                                    out = M.main()
+                                    with patch("transcribe.torch.cuda.is_available", return_value=True):
+                                        with patch("transcribe.torch.cuda.get_device_name", return_value="Mock GPU"):
+                                            out = M.main()
             self.assertEqual(out, 0)
             self.assertEqual(mock_model.transcribe.call_count, 2)
             self.assertTrue(out_file.exists())
             text = out_file.read_text(encoding="utf-8")
             self.assertIn("Part one.", text)
             self.assertIn("Part two.", text)
+            self.assertTrue(mock_model.transcribe.call_args.kwargs["fp16"])
+
+    def test_chunking_single_chunk_uses_spinner_path(self) -> None:
+        with _make_temp_dir() as d:
+            root = Path(d)
+            audio_file = root / "short.mp3"
+            audio_file.write_bytes(b"fake")
+            out_file = root / "short.txt"
+            mock_model = MagicMock()
+            mock_model.transcribe.return_value = {"text": "Only chunk."}
+            fake_audio = np.zeros(int(4 * M.SAMPLE_RATE), dtype=np.float32)  # shorter than chunk-duration
+            with patch.object(sys, "argv", ["transcribe", str(audio_file), "--chunk-duration", "5", "--overlap", "1"]):
+                with patch.object(M, "ensure_ffmpeg_available"):
+                    with patch.object(M, "collect_audio_paths", return_value=[audio_file]):
+                        with patch("transcribe.whisper.load_model", return_value=mock_model):
+                            with patch("transcribe.whisper.load_audio", return_value=fake_audio):
+                                with patch("transcribe.torch.cuda.is_available", return_value=False):
+                                    out = M.main()
+            self.assertEqual(out, 0)
+            mock_model.transcribe.assert_called_once()
+            self.assertTrue(out_file.exists())
+            self.assertIn("Only chunk.", out_file.read_text(encoding="utf-8"))
+            self.assertFalse(mock_model.transcribe.call_args.kwargs["fp16"])
+
+
+class TestEntrypoint(unittest.TestCase):
+    def test_module_entrypoint_help_exits_zero(self) -> None:
+        script_path = Path(M.__file__).resolve()
+        with patch.object(sys, "argv", [str(script_path), "--help"]):
+            with self.assertRaises(SystemExit) as ctx:
+                runpy.run_path(str(script_path), run_name="__main__")
+        self.assertEqual(ctx.exception.code, 0)
 
 
 if __name__ == "__main__":

@@ -25,9 +25,11 @@ build/
 .pytest_cache/
 .coverage
 .coverage.*
+*.cover
 htmlcov/
 .tox/
 .nox/
+.tmp_test/
 
 # Type checkers / linters
 .mypy_cache/
