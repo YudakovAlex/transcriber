@@ -1,65 +1,135 @@
 # Transcriber
 
-Transcribe audio (MP3, WAV, OGG) to text using [OpenAI Whisper](https://github.com/openai/whisper). Handles long files by splitting into overlapping chunks and merging transcripts. One command from the shell, no GUI.
+Transcribe audio (MP3, WAV, OGG) to text using [OpenAI Whisper](https://github.com/openai/whisper). Handles long files by splitting into overlapping chunks and merging transcripts.
 
----
-
-## Quick start
+## Quick Start
 
 ```bash
-# 1. Setup (once): creates venv, installs deps, installs ffmpeg if needed
+# 1) Setup (once)
 setup.cmd          # Windows (or run setup.ps1 in PowerShell)
 ./setup.sh         # Linux / macOS (chmod +x first if needed)
 
-# 2. Add this folder to your PATH, then in a new terminal:
+# 2) Open a new terminal, then run:
 transcribe recording.mp3
 ```
 
-Transcripts are saved next to each file (e.g. `recording.mp3` → `recording.txt`).
-
----
+Transcripts are saved next to each source file (for example `recording.mp3` -> `recording.txt`).
 
 ## Requirements
 
-- **Python 3** (3.8+)
-- **ffmpeg** on PATH (Whisper uses it to decode audio). The setup scripts can install it for you.
+- Python 3.8+
+- ffmpeg on PATH
 
----
+## Recent Fixes
+
+- Windows setup now detects Python from `py`, `python`, or `python3` instead of assuming only one launcher exists.
+- Windows launchers were aligned to use `.venv` consistently.
+- Setup now validates PATH entries at the end and reports clear errors if PATH updates fail.
+- `transcribe.py` now prints selected compute device at startup.
+- `fp16` is now enabled automatically when CUDA is available and disabled on CPU.
 
 ## Installation
 
 ### Windows
 
 1. Clone or download this repository.
-2. Run **setup** (creates a virtualenv, installs Python deps, and optionally installs ffmpeg):
-   - Double‑click `setup.cmd`, or
-   - In Command Prompt: `setup.cmd`
-   - In PowerShell: `powershell -ExecutionPolicy Bypass -File setup.ps1`
-3. Add the **Transcriber folder** to your [system or user PATH](https://docs.microsoft.com/en-us/windows/win32/procthread/environment-variables).
-4. Open a **new** terminal (so PATH is updated) and run:
-   ```cmd
-   transcribe recording.mp3
-   ```
+2. Run setup:
+   - `setup.cmd`, or
+   - `powershell -ExecutionPolicy Bypass -File setup.ps1`
+3. Open a new terminal.
+4. Run:
+
+```cmd
+transcribe recording.mp3
+```
+
+If `transcribe` is not resolved as a command, run directly from the repo:
+
+```powershell
+.\transcribe.ps1 recording.mp3
+```
 
 ### Linux / macOS
 
 1. Clone or download this repository.
-2. Run **setup**:
-   ```bash
-   chmod +x setup.sh transcribe
-   ./setup.sh
-   ```
-   This creates a venv, installs dependencies, and tries to install ffmpeg via your package manager (apt, dnf, yum, pacman, zypper) or downloads a static build.
-3. Add the project folder to PATH (e.g. in `~/.bashrc` or `~/.profile`):
-   ```bash
-   export PATH="/path/to/Transcriber:$PATH"
-   ```
-4. In a new terminal:
-   ```bash
-   transcribe recording.mp3
-   ```
+2. Run:
 
----
+```bash
+chmod +x setup.sh transcribe
+./setup.sh
+```
+
+3. Add the project folder to PATH, then open a new terminal.
+
+## Setup Side Effects
+
+Running `setup.ps1` / `setup.cmd` (Windows) or `setup.sh` (Linux/macOS) changes your environment in these ways:
+
+- Creates a virtual environment at `.venv/` in the repo.
+- Installs Python dependencies into `.venv/` (including `openai-whisper`, `torch`, and transitive deps).
+- Creates `.venv/.deps_installed` as a marker file.
+- Verifies `ffmpeg` availability.
+- If `ffmpeg` is missing:
+  - Windows tries `winget install Gyan.FFmpeg`, then falls back to downloading and extracting FFmpeg into `./ffmpeg/`.
+  - Linux/macOS tries package manager install and may fall back to a downloaded static build (from `setup.sh`).
+- Updates PATH:
+  - Adds the project folder so `transcribe` can be called directly.
+  - Adds local `ffmpeg\bin` when a local FFmpeg install exists.
+  - Updates current shell PATH for immediate use and updates User PATH for future shells.
+- Performs network downloads during dependency install and (if needed) FFmpeg install.
+
+Whisper model files are not downloaded by setup. They are downloaded on first transcription run and cached under your user profile cache directory.
+
+## Estimated Disk Space
+
+Approximate space required (varies by OS, wheel/build selection, and model choice):
+
+- Repo + scripts: `< 20 MB`
+- `.venv` with CPU-only Torch: `~1.2 GB to 2.0 GB`
+- `.venv` with CUDA-enabled Torch: `~3.5 GB to 6.0 GB`
+- Local FFmpeg folder (`./ffmpeg`) if downloaded by setup: `~120 MB to 250 MB`
+- Whisper model cache (first use, outside repo):
+  - `tiny`: `~75 MB`
+  - `base`: `~150 MB`
+  - `small`: `~500 MB`
+  - `medium`: `~1.5 GB`
+  - `large`: `~3.0 GB`
+
+Rule-of-thumb totals:
+
+- CPU setup + `small` model: `~2 GB to 3 GB`
+- CUDA setup + `small` model: `~4 GB to 7 GB`
+- CUDA setup + `large` model: `~7 GB to 10+ GB`
+
+During installation, temporary download/cache usage can add additional short-lived disk usage.
+
+## GPU / CUDA Notes
+
+At startup, the app prints the selected device:
+
+- `Using device: cuda (...), fp16=True` means GPU acceleration is active.
+- `Using device: cpu, fp16=False` means it is running on CPU.
+
+If you have an NVIDIA GPU but still see CPU:
+
+1. Check Torch build:
+
+```powershell
+.\.venv\Scripts\python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.version.cuda)"
+```
+
+2. If version ends with `+cpu`, reinstall a CUDA-enabled Torch build.
+3. On this project, Python 3.12 is recommended for best CUDA wheel compatibility on Windows.
+
+Example reinstall flow:
+
+```powershell
+Remove-Item -Recurse -Force .\.venv
+& "C:\Users\<you>\AppData\Local\Python\pythoncore-3.12-64\python.exe" -m venv .venv
+.\.venv\Scripts\python -m pip install --upgrade pip
+.\.venv\Scripts\python -m pip install --index-url https://download.pytorch.org/whl/cu128 torch
+.\.venv\Scripts\python -m pip install -r .\requirements.txt
+```
 
 ## Usage
 
@@ -67,14 +137,14 @@ Transcripts are saved next to each file (e.g. `recording.mp3` → `recording.txt
 transcribe <file_or_dir> [<file_or_dir> ...] [options]
 ```
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--model` | Whisper model: `tiny`, `base`, `small`, `medium`, `large` (larger = more accurate, slower) | small |
-| `--language` | Two-letter code (e.g. `en`); omit to auto-detect | — |
-| `--chunk-duration` | Max seconds per chunk; `0` = no chunking | 300 |
-| `--overlap` | Overlap between chunks (seconds) | 30 |
+Options:
 
-**Examples:**
+- `--model`: `tiny`, `base`, `small`, `medium`, `large` (default: `small`)
+- `--language`: language code such as `en` (default: auto-detect)
+- `--chunk-duration`: max seconds per chunk (`0` disables chunking, default: `300`)
+- `--overlap`: overlap between chunks in seconds (default: `30`)
+
+Examples:
 
 ```bash
 transcribe recording.mp3
@@ -84,71 +154,8 @@ transcribe long.mp3 --chunk-duration 180 --overlap 20
 transcribe short.mp3 --chunk-duration 0
 ```
 
-- **Input:** One or more files or directories. Directories are scanned for `.mp3`, `.wav`, `.ogg`.
-- **Output:** For each audio file, a `.txt` with the same base name in the same folder.
-
----
-
-## Features
-
-- **Formats:** MP3, WAV, OGG
-- **Long files:** Optional chunking with overlap to reduce memory use; progress bar (tqdm) when processing multiple chunks
-- **Batch:** Process multiple files or a whole directory in one run
-- **Portable:** Use the launchers (`transcribe`, `transcribe.cmd`, `transcribe.ps1`) so the script runs with the project venv and deps without activating it yourself
-
----
-
-## Running without the launcher
-
-With the project venv activated (or its `python` on PATH):
-
-```bash
-python transcribe.py file.mp3
-```
-
----
-
 ## Tests
-
-From the project root with the venv activated:
 
 ```bash
 python -m unittest test_transcribe -v
 ```
-
----
-
-## Project layout
-
-```text
-Transcriber/
-├── transcribe.py       # Main script
-├── transcribe.cmd      # Windows launcher (CMD)
-├── transcribe.ps1      # Windows launcher (PowerShell)
-├── transcribe          # Linux/macOS launcher
-├── setup.cmd           # Windows setup (invokes setup.ps1)
-├── setup.ps1           # Windows setup
-├── setup.sh            # Linux/macOS setup
-├── requirements.txt
-├── test_transcribe.py
-├── .gitignore
-└── README.md
-```
-
-After setup you’ll also have a `venv/` directory and, if the script installed it, an `ffmpeg/` directory (both are in `.gitignore`).
-
----
-
-## Troubleshooting
-
-- **“ffmpeg not found”**  
-  Install ffmpeg and add it to PATH, or run the setup script again (it can install ffmpeg). On Windows, a common location is `C:\ffmpeg\bin`.
-
-- **“No module named 'whisper'”**  
-  Run the setup script for your OS so the virtualenv and dependencies are created. Then use the `transcribe` launcher (which uses that venv), or activate the venv and run `python transcribe.py`.
-
-- **First run is slow**  
-  Whisper downloads the model (e.g. “small”) on first use. Later runs reuse the cached model.
-
-- **PATH not updated**  
-  After adding the Transcriber folder to PATH, open a **new** terminal so the change is picked up.

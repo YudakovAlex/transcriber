@@ -49,6 +49,26 @@ goto :eof
 :find_python3
 where py >nul 2>&1
 if not errorlevel 1 (
+  py -3.12 -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3,12) else 1)" >nul 2>&1
+  if not errorlevel 1 (
+    set "PYTHON_CMD=py"
+    set "PYTHON_ARGS=-3.12"
+    goto :eof
+  )
+)
+
+set "PY312=%LOCALAPPDATA%\Python\pythoncore-3.12-64\python.exe"
+if exist "%PY312%" (
+  "%PY312%" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3,12) else 1)" >nul 2>&1
+  if not errorlevel 1 (
+    set "PYTHON_CMD=%PY312%"
+    set "PYTHON_ARGS="
+    goto :eof
+  )
+)
+
+where py >nul 2>&1
+if not errorlevel 1 (
   py -3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3,8) else 1)" >nul 2>&1
   if not errorlevel 1 (
     set "PYTHON_CMD=py"

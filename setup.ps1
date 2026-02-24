@@ -65,13 +65,29 @@ function Add-UserPathEntry {
 
 # Resolve a Python 3 launcher across common Windows setups.
 function Get-Python3Command {
-    $candidates = @(
+    $python312Path = Join-Path $env:LocalAppData "Python\pythoncore-3.12-64\python.exe"
+    $preferredCandidates = @(
+        @{ cmd = "py"; args = @("-3.12") },
+        @{ cmd = "python3.12"; args = @() },
+        @{ cmd = $python312Path; args = @() }
+    )
+
+    foreach ($candidate in $preferredCandidates) {
+        try {
+            if (($candidate.cmd -eq $python312Path) -and (-not (Test-Path $candidate.cmd))) { continue }
+            if ($candidate.cmd -ne $python312Path) { $null = Get-Command $candidate.cmd -ErrorAction Stop }
+            & $candidate.cmd @($candidate.args + @("-c", "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)")) | Out-Null
+            if ($LASTEXITCODE -eq 0) { return $candidate }
+        } catch {}
+    }
+
+    $fallbackCandidates = @(
         @{ cmd = "py"; args = @("-3") },
         @{ cmd = "python"; args = @() },
         @{ cmd = "python3"; args = @() }
     )
 
-    foreach ($candidate in $candidates) {
+    foreach ($candidate in $fallbackCandidates) {
         try {
             $null = Get-Command $candidate.cmd -ErrorAction Stop
             & $candidate.cmd @($candidate.args + @("-c", "import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)")) | Out-Null
@@ -82,17 +98,29 @@ function Get-Python3Command {
     return $null
 }
 
+function Get-PythonMajorMinor {
+    param($PythonCmd)
+    try {
+        return (& $PythonCmd.cmd @($PythonCmd.args + @("-c", "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"))).Trim()
+    } catch {}
+    return $null
+}
+
 # ---- Venv ----
 Write-Host "=== Venv ===" -ForegroundColor Cyan
 if (-not (Test-Path $PythonExe)) {
     Write-Host "Creating venv..."
     $PythonCmd = Get-Python3Command
     if (-not $PythonCmd) {
-        Write-Error "Failed to find Python 3.8+. Install Python 3 and ensure one of 'py', 'python', or 'python3' is on PATH."
+        Write-Error "Failed to find Python 3.8+ (3.12 preferred). Install Python 3.12 and ensure one of 'py', 'python', or 'python3' is on PATH."
+    }
+    $PythonVersion = Get-PythonMajorMinor -PythonCmd $PythonCmd
+    if ($PythonVersion -and ($PythonVersion -ne "3.12")) {
+        Write-Warning "Using Python $PythonVersion. Python 3.12 is recommended for CUDA-enabled Torch wheels on Windows."
     }
     & $PythonCmd.cmd @($PythonCmd.args + @("-m", "venv", $VenvDir))
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to create venv. Install Python 3.8+ and ensure one of 'py', 'python', or 'python3' is on PATH."
+        Write-Error "Failed to create venv. Install Python 3.12 (or 3.8+) and ensure one of 'py', 'python', or 'python3' is on PATH."
     }
     Write-Host "Venv created." -ForegroundColor Green
 } else {
