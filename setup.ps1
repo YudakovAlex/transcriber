@@ -12,6 +12,57 @@ $PipExe = Join-Path $VenvDir "Scripts\pip.exe"
 $FfmpegDir = Join-Path $ScriptDir "ffmpeg"
 $FfmpegBin = Join-Path $FfmpegDir "bin"
 
+function Test-PathEntry {
+    param(
+        [string]$PathValue,
+        [string]$Entry
+    )
+
+    if ([string]::IsNullOrWhiteSpace($PathValue)) { return $false }
+    if ([string]::IsNullOrWhiteSpace($Entry)) { return $false }
+
+    $NormalizedEntry = [IO.Path]::GetFullPath($Entry).TrimEnd('\')
+    foreach ($item in $PathValue.Split(';')) {
+        $candidate = $item.Trim().Trim('"')
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        try {
+            $NormalizedCandidate = [IO.Path]::GetFullPath($candidate).TrimEnd('\')
+        } catch {
+            continue
+        }
+        if ($NormalizedCandidate.Equals($NormalizedEntry, [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Add-UserPathEntry {
+    param([string]$Entry)
+
+    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (Test-PathEntry -PathValue $UserPath -Entry $Entry) {
+        return $true
+    }
+
+    try {
+        $NewUserPath = if ([string]::IsNullOrWhiteSpace($UserPath)) { $Entry } else { "$UserPath;$Entry" }
+        [Environment]::SetEnvironmentVariable("Path", $NewUserPath, "User")
+    } catch {
+        Write-Error "Failed to update User PATH with '$Entry': $($_.Exception.Message)"
+        return $false
+    }
+
+    $UpdatedUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (-not (Test-PathEntry -PathValue $UpdatedUserPath -Entry $Entry)) {
+        Write-Error "PATH update did not persist for '$Entry'. Update User PATH manually."
+        return $false
+    }
+
+    return $true
+}
+
 # Resolve a Python 3 launcher across common Windows setups.
 function Get-Python3Command {
     $candidates = @(
@@ -114,19 +165,37 @@ if ($FfmpegInPath) {
     }
 }
 
-# ---- Register FFmpeg in PATH (if we have a local ffmpeg\bin) ----
+# ---- Register launchers/tools in PATH and verify ----
+Write-Host "`n=== PATH ===" -ForegroundColor Cyan
+$PathEntriesToEnsure = @($ScriptDir)
 if ((Test-Path $FfmpegBin) -and (Test-Path (Join-Path $FfmpegBin "ffmpeg.exe"))) {
-    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($UserPath -notlike "*$FfmpegBin*") {
-        [Environment]::SetEnvironmentVariable("Path", "$UserPath;$FfmpegBin", "User")
-        Write-Host "Added $FfmpegBin to User PATH. Restart the terminal for it to take effect." -ForegroundColor Green
+    $PathEntriesToEnsure += $FfmpegBin
+}
+
+$PathUpdateFailed = $false
+foreach ($entry in $PathEntriesToEnsure) {
+    if (Add-UserPathEntry -Entry $entry) {
+        Write-Host "PATH check ok: $entry" -ForegroundColor Green
     } else {
-        Write-Host "FFmpeg bin already in User PATH." -ForegroundColor Green
+        $PathUpdateFailed = $true
     }
+}
+
+# Update current session PATH so commands can run immediately.
+$CurrentPath = $env:Path
+foreach ($entry in $PathEntriesToEnsure) {
+    if (-not (Test-PathEntry -PathValue $CurrentPath -Entry $entry)) {
+        $env:Path = if ([string]::IsNullOrWhiteSpace($env:Path)) { $entry } else { "$env:Path;$entry" }
+        $CurrentPath = $env:Path
+    }
+}
+
+if ($PathUpdateFailed) {
+    Write-Error "One or more PATH updates failed. Verify your User PATH and add missing entries manually."
 }
 
 # ---- Stamp for transcribe.cmd so it skips install on next run ----
 $StampFile = Join-Path $VenvDir ".deps_installed"
 "installed" | Set-Content -Path $StampFile -Encoding Ascii -Force
 
-Write-Host "`nSetup complete. Add this folder to PATH to run: transcribe file.mp3" -ForegroundColor Cyan
+Write-Host "`nSetup complete. Run in a new terminal: transcribe file.mp3" -ForegroundColor Cyan

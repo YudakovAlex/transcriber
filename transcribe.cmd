@@ -2,9 +2,11 @@
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
-set "VENV_DIR=%SCRIPT_DIR%venv"
+set "VENV_DIR=%SCRIPT_DIR%.venv"
 set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
 set "STAMP_FILE=%VENV_DIR%\.deps_installed"
+set "PYTHON_CMD="
+set "PYTHON_ARGS="
 
 where ffmpeg >nul 2>&1
 if errorlevel 1 (
@@ -14,10 +16,15 @@ if errorlevel 1 (
 )
 
 if not exist "%PYTHON_EXE%" (
+  call :find_python3
+  if not defined PYTHON_CMD (
+    echo Failed to find Python 3.8+. Ensure one of py, python, or python3 is on PATH.
+    exit /b 1
+  )
   echo Creating venv...
-  py -3 -m venv "%VENV_DIR%"
+  %PYTHON_CMD% %PYTHON_ARGS% -m venv "%VENV_DIR%"
   if errorlevel 1 (
-    echo Failed to create venv. Ensure Python is installed.
+    echo Failed to create venv. Ensure Python 3.8+ is installed.
     exit /b 1
   )
 )
@@ -37,3 +44,37 @@ if not exist "%STAMP_FILE%" (
 
 "%PYTHON_EXE%" "%SCRIPT_DIR%transcribe.py" %*
 endlocal
+goto :eof
+
+:find_python3
+where py >nul 2>&1
+if not errorlevel 1 (
+  py -3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3,8) else 1)" >nul 2>&1
+  if not errorlevel 1 (
+    set "PYTHON_CMD=py"
+    set "PYTHON_ARGS=-3"
+    goto :eof
+  )
+)
+
+where python >nul 2>&1
+if not errorlevel 1 (
+  python -c "import sys; raise SystemExit(0 if sys.version_info >= (3,8) else 1)" >nul 2>&1
+  if not errorlevel 1 (
+    set "PYTHON_CMD=python"
+    goto :eof
+  )
+)
+
+where python3 >nul 2>&1
+if not errorlevel 1 (
+  python3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3,8) else 1)" >nul 2>&1
+  if not errorlevel 1 (
+    set "PYTHON_CMD=python3"
+    goto :eof
+  )
+)
+
+set "PYTHON_CMD="
+set "PYTHON_ARGS="
+goto :eof
