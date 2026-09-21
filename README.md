@@ -1,6 +1,6 @@
 # Transcriber
 
-Transcribe audio (MP3, WAV, OGG) to text using [OpenAI Whisper](https://github.com/openai/whisper). Handles long files by splitting into overlapping chunks and merging transcripts.
+Transcribe audio (MP3, WAV, OGG) and MP4 audio tracks to text using [OpenAI Whisper](https://github.com/openai/whisper). Handles long files by splitting into overlapping chunks and merging transcripts.
 
 ## Quick Start
 
@@ -14,6 +14,8 @@ transcribe recording.mp3
 ```
 
 Transcripts are saved next to each source file (for example `recording.mp3` -> `recording.txt`).
+
+MP4 files must contain an audio track. FFmpeg extracts the audio automatically; no manual conversion is needed. MP4 files are also included when transcribing a directory, and `recording.mp4` produces `recording.txt`.
 
 ## Requirements
 
@@ -148,6 +150,7 @@ Examples:
 
 ```bash
 transcribe recording.mp3
+transcribe recording.mp4
 transcribe file1.mp3 file2.wav dir/
 transcribe recording.mp3 --model base --language en
 transcribe long.mp3 --chunk-duration 180 --overlap 20

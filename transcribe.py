@@ -1,9 +1,10 @@
 """
-Transcribe audio files (MP3, WAV, OGG) using Whisper. Requires ffmpeg on PATH.
+Transcribe audio files (MP3, WAV, OGG) and MP4 audio using Whisper. Requires ffmpeg on PATH.
 
 CLI usage:
   transcribe <file_or_dir> [<file_or_dir> ...] [options]
   transcribe recording.mp3
+  transcribe recording.mp4
   transcribe file1.mp3 file2.wav folder/
   transcribe recording.mp3 --model base --language en
   transcribe long.mp3 --chunk-duration 180 --overlap 20
@@ -36,7 +37,7 @@ DEFAULT_MODEL = "small"  # Whisper model: tiny, base, small, medium, large
 DEFAULT_LANGUAGE = None  # e.g. "en"; None = auto-detect
 DEFAULT_CHUNK_DURATION_SEC = 300.0  # Max seconds per chunk; 0 = no chunking
 DEFAULT_OVERLAP_SEC = 30.0  # Overlap between consecutive chunks (seconds)
-SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".ogg"}
+SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".ogg", ".mp4"}
 
 
 def ensure_ffmpeg_available() -> None:
@@ -49,12 +50,12 @@ def ensure_ffmpeg_available() -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Transcribe one or more audio files using Whisper."
+        description="Transcribe MP3, WAV, OGG, or MP4 audio using Whisper."
     )
     parser.add_argument(
         "inputs",
         nargs="+",
-        help="Path(s) to audio files or a directory containing audio files.",
+        help="Path(s) to MP3, WAV, OGG, or MP4 files, or a directory containing them.",
     )
     parser.add_argument(
         "--model",
