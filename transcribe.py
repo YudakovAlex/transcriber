@@ -15,7 +15,7 @@ from transcription.progress import Spinner
 DEFAULT_MODEL = "small"
 DEFAULT_LANGUAGE = None
 DEFAULT_CHUNK_DURATION_SEC = 300.0
-DEFAULT_OVERLAP_SEC = 30.0
+DEFAULT_OVERLAP_SEC = 15.0
 SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".ogg", ".mp4"}
 
 
@@ -42,7 +42,7 @@ def parse_args():
     parser.add_argument("--chunk-duration", type=float, default=DEFAULT_CHUNK_DURATION_SEC,
                         metavar="SECONDS", help="Max chunk seconds; 0 disables chunking. Default: 300.")
     parser.add_argument("--overlap", type=float, default=DEFAULT_OVERLAP_SEC,
-                        metavar="SECONDS", help="Overlap seconds. Default: 30.")
+                        metavar="SECONDS", help="Overlap seconds. Default: 15.")
     parser.add_argument("--backend", choices=("local", "modal"), default="local")
     parser.add_argument("--modal-workers", type=int, choices=(1, 2, 3, 4), default=None,
                         help="Outstanding Modal calls (default: 2). Modal backend only.")
