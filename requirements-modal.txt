@@ -1,0 +1,2 @@
+# Optional client only. Existing local installs do not need Modal.
+modal==1.5.5

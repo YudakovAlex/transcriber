@@ -30,6 +30,8 @@ htmlcov/
 .tox/
 .nox/
 .tmp_test/
+.transcriber-jobs/
+benchmark-results/
 
 # Type checkers / linters
 .mypy_cache/

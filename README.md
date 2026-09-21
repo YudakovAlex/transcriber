@@ -19,7 +19,7 @@ MP4 files must contain an audio track. FFmpeg extracts the audio automatically; 
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.10+ (Python 3.12 recommended for the pinned benchmark/Modal image)
 - ffmpeg on PATH
 
 ## Recent Fixes
@@ -162,3 +162,73 @@ transcribe short.mp3 --chunk-duration 0
 ```bash
 python -m unittest test_transcribe -v
 ```
+
+Run the complete offline suite, including recovery and real FFmpeg preparation tests:
+
+```bash
+python -m unittest discover -v
+```
+
+## Experimental Modal backend
+
+Local transcription remains the default. The optional backend runs the same OpenAI
+Whisper engine on independent GPU containers. Its speed, accuracy, and cost gates
+have **not yet been validated with real recordings**; no deployed benchmark results
+are included in this repository. See [benchmark and rollout guide](docs/modal-backend.md).
+
+Install the optional client in the environment used by your launcher:
+
+```bash
+python -m pip install -r requirements-modal.txt
+python -m modal setup
+```
+
+Deployment and weight provisioning are explicit operations that can incur charges:
+
+```bash
+modal deploy modal_app.py
+modal run modal_app.py --model small
+```
+
+Then opt in for a recording:
+
+```bash
+transcribe recording.mp4 --backend modal --modal-workers 2 --model small --language en
+```
+
+The CLI extracts MP4 audio locally and uploads only mono 16 kHz PCM. One upload is
+shared by all chunks. The worker loads the selected model once per container from
+a separately provisioned, checksum-verified weights cache. `tiny`, `base`, `small`,
+`medium`, and `large` are supported; provision each model before selecting it.
+`large` is pinned to large-v3. The initial cost target applies to `small`; larger
+models use a 16 GiB host-memory profile and need separate qualification.
+
+`--modal-workers` accepts 1–4 and defaults to 2. `--chunk-duration 0` sends one
+request and provides no chunk parallelism. Modal-only options are rejected when
+`--backend local` is selected. Model and language defaults otherwise stay the same.
+Each file produces its usual adjacent `.txt`, written atomically only on success.
+
+Modal jobs print a checkpoint directory under `.transcriber-jobs/` next to the
+recording. Ctrl+C saves completed chunks and attempts to cancel outstanding calls.
+Resume with the original input and transcription options:
+
+```bash
+transcribe recording.mp4 --backend modal --model small --language en --resume ".transcriber-jobs/JOB_DIRECTORY"
+```
+
+Source content, normalized audio, model checksum, decoding settings, chunk boundaries,
+and implementation version are checked before results are reused. A changed worker
+count is allowed. There is no automatic fallback to local inference. A killed client
+can leave up to the configured number of calls running; resume reconciles their IDs.
+Remote results expire after seven days. Completed local checkpoints remain reusable.
+
+Successful jobs delete their uploaded audio. Interrupted uploads expire after seven
+days and are removed by a daily CPU cleanup function (there can be up to one additional
+day before deletion). Local PCM and transcript checkpoints are retained until you
+delete the job directory. The checkpoint directory contains recording/transcript data;
+it is ignored by Git. The model cache persists separately.
+
+Authentication uses the active Modal profile, or `MODAL_TOKEN_ID` and
+`MODAL_TOKEN_SECRET`. `MODAL_ENVIRONMENT` selects an environment and
+`TRANSCRIBER_MODAL_APP` can select a separately named deployment. Do not put tokens in
+source files. Normal CLI use never deploys an app or downloads weights on GPU startup.

@@ -1,0 +1,6 @@
+# Use in a separate Python 3.12 environment; do not replace the existing baseline.
+openai-whisper==20250625
+torch==2.10.0
+numpy==2.2.6
+tqdm==4.67.1
+-r requirements-modal.txt
